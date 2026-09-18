@@ -1,11 +1,14 @@
 import hashlib
+import re
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from sqlalchemy import text
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Path as PathParam
+from fastapi.responses import FileResponse
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.db import Base, Dataset, engine, get_session
@@ -14,6 +17,9 @@ from app.schemas import DatasetOut, Institution, Sensitivity
 UPLOAD_DIR = Path("/data/uploads")
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 CHUNK_SIZE = 1024 * 1024  # read 1 MB at a time
+MAX_DB_INT = 2_147_483_647  # largest value a PostgreSQL INTEGER can hold
+
+DatasetId = Annotated[int, PathParam(ge=1, le=MAX_DB_INT)]
 
 
 @asynccontextmanager
@@ -24,7 +30,20 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Secure Research Data Bank", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Secure Research Data Bank", version="0.3.0", lifespan=lifespan)
+
+
+def get_dataset_or_404(dataset_id: int, session: Session) -> Dataset:
+    dataset = session.get(Dataset, dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return dataset
+
+
+def safe_download_name(original: str) -> str:
+    # Keep only letters, digits, dot, dash and underscore for the download header
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", original).strip("._")
+    return cleaned[:100] or "dataset"
 
 
 @app.get("/health")
@@ -86,3 +105,35 @@ def upload_dataset(
         raise
 
     return dataset
+
+
+@app.get("/datasets", response_model=list[DatasetOut])
+def list_datasets(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
+    session: Session = Depends(get_session),
+):
+    stmt = select(Dataset).order_by(Dataset.id).limit(limit).offset(offset)
+    return session.scalars(stmt).all()
+
+
+@app.get("/datasets/{dataset_id}", response_model=DatasetOut)
+def get_dataset(dataset_id: DatasetId, session: Session = Depends(get_session)):
+    return get_dataset_or_404(dataset_id, session)
+
+
+@app.get("/datasets/{dataset_id}/file")
+def download_dataset(dataset_id: DatasetId, session: Session = Depends(get_session)):
+    dataset = get_dataset_or_404(dataset_id, session)
+
+    # The path comes from OUR database value, never from the request
+    path = UPLOAD_DIR / dataset.stored_filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=safe_download_name(dataset.original_filename),
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
