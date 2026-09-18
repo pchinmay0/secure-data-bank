@@ -7,7 +7,7 @@ import urllib.request
 
 API = "http://localhost:8000"
 SOURCE = "https://noaa-ghcn-pds.s3.amazonaws.com/csv/by_station"
-MAX_BYTES = 5 * 1024 * 1024
+MAX_BYTES = 25 * 1024 * 1024
 
 # (station id, dataset name, owner institution, sensitivity, shared with)
 SEEDS = [
