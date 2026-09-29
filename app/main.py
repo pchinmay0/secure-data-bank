@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.auth import CurrentUserDep
+from app import policy
 from app.db import Base, Dataset, engine, get_session
 from app.schemas import DatasetOut, Institution, Sensitivity
 
@@ -31,7 +32,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Secure Research Data Bank", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="Secure Research Data Bank", version="0.5.0", lifespan=lifespan)
 
 
 def get_dataset_or_404(dataset_id: int, session: Session) -> Dataset:
@@ -64,6 +65,8 @@ def upload_dataset(
     shared_with: Annotated[list[Institution] | None, Form()] = None,
     session: Session = Depends(get_session),
 ):
+    policy.require(user, "upload")
+
     # Never use the uploader's filename on disk: generate our own
     stored_filename = uuid.uuid4().hex
     dest = UPLOAD_DIR / stored_filename
@@ -116,7 +119,10 @@ def list_datasets(
     session: Session = Depends(get_session),
 ):
     stmt = select(Dataset).order_by(Dataset.id).limit(limit).offset(offset)
-    return session.scalars(stmt).all()
+    datasets = session.scalars(stmt).all()
+    # Filter by policy: a dataset the caller may not see must not appear here
+    # either, or the listing becomes a way around the per-dataset check.
+    return [d for d in datasets if policy.is_allowed(user, "read_metadata", d)]
 
 
 @app.get("/datasets/{dataset_id}", response_model=DatasetOut)
@@ -125,7 +131,9 @@ def get_dataset(
     user: CurrentUserDep,
     session: Session = Depends(get_session),
 ):
-    return get_dataset_or_404(dataset_id, session)
+    dataset = get_dataset_or_404(dataset_id, session)
+    policy.require_visible(user, dataset)
+    return dataset
 
 
 @app.get("/datasets/{dataset_id}/file")
@@ -135,6 +143,11 @@ def download_dataset(
     session: Session = Depends(get_session),
 ):
     dataset = get_dataset_or_404(dataset_id, session)
+
+    # 404 if they may not even know it exists; 403 if they may see it but
+    # are not permitted the file itself.
+    policy.require_visible(user, dataset)
+    policy.require(user, "download", dataset)
 
     # The path comes from OUR database value, never from the request
     path = UPLOAD_DIR / dataset.stored_filename

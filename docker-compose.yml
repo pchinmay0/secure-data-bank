@@ -22,6 +22,7 @@ services:
       OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/databank}
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/databank/protocol/openid-connect/certs}
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-databank-api}
+      OPA_URL: ${OPA_URL:-http://opa:8181/v1/data/databank/allow}
     volumes:
       - uploads:/data/uploads
     ports:
@@ -29,6 +30,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      opa:
+        condition: service_started
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: start-dev
@@ -39,6 +42,20 @@ services:
       - keycloak_data:/opt/keycloak/data
     ports:
       - "127.0.0.1:8080:8080"
+
+  opa:
+    image: openpolicyagent/opa:1.0.0
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=error"
+      - "/policies"
+    volumes:
+      - ./policies:/policies:ro
+    ports:
+      - "127.0.0.1:8181:8181"
+
 volumes:
   pgdata:
   uploads:
