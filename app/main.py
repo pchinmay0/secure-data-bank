@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.auth import CurrentUserDep
 from app.db import Base, Dataset, engine, get_session
 from app.schemas import DatasetOut, Institution, Sensitivity
 
@@ -30,7 +31,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Secure Research Data Bank", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="Secure Research Data Bank", version="0.4.0", lifespan=lifespan)
 
 
 def get_dataset_or_404(dataset_id: int, session: Session) -> Dataset:
@@ -57,7 +58,7 @@ def health():
 def upload_dataset(
     file: Annotated[UploadFile, File()],
     name: Annotated[str, Form(min_length=1, max_length=200)],
-    owner_institution: Annotated[Institution, Form()],
+    user: CurrentUserDep,
     sensitivity: Annotated[Sensitivity, Form()],
     description: Annotated[str | None, Form(max_length=2000)] = None,
     shared_with: Annotated[list[Institution] | None, Form()] = None,
@@ -82,12 +83,12 @@ def upload_dataset(
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
         # Remove duplicates, and don't "share" a dataset with its own owner
-        shared = sorted({i.value for i in (shared_with or [])} - {owner_institution.value})
+        shared = sorted({i.value for i in (shared_with or [])} - {user.institution})
 
         dataset = Dataset(
             name=name,
             description=description,
-            owner_institution=owner_institution.value,
+            owner_institution=user.institution,
             sensitivity=sensitivity.value,
             shared_with=shared,
             original_filename=Path(file.filename or "unnamed").name[:255],
@@ -109,6 +110,7 @@ def upload_dataset(
 
 @app.get("/datasets", response_model=list[DatasetOut])
 def list_datasets(
+    user: CurrentUserDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
     session: Session = Depends(get_session),
@@ -118,12 +120,20 @@ def list_datasets(
 
 
 @app.get("/datasets/{dataset_id}", response_model=DatasetOut)
-def get_dataset(dataset_id: DatasetId, session: Session = Depends(get_session)):
+def get_dataset(
+    dataset_id: DatasetId,
+    user: CurrentUserDep,
+    session: Session = Depends(get_session),
+):
     return get_dataset_or_404(dataset_id, session)
 
 
 @app.get("/datasets/{dataset_id}/file")
-def download_dataset(dataset_id: DatasetId, session: Session = Depends(get_session)):
+def download_dataset(
+    dataset_id: DatasetId,
+    user: CurrentUserDep,
+    session: Session = Depends(get_session),
+):
     dataset = get_dataset_or_404(dataset_id, session)
 
     # The path comes from OUR database value, never from the request

@@ -19,6 +19,9 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/databank}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/databank/protocol/openid-connect/certs}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-databank-api}
     volumes:
       - uploads:/data/uploads
     ports:
