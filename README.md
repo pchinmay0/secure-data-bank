@@ -39,25 +39,13 @@ it and recreating the four demo users.
 
 ## Architecture
 
-```
-                 1. log in
-  researcher ──────────────────▶  Keycloak            OPA
-  (UniversityA)                   identity provider   policy engine
-      │                           issues RS256 JWTs   (Rego, default deny)
-      │ 2. request + token                ▲                 ▲
-      ▼                                   │ public keys     │ 3. allow?
-   ┌────────────────────────────────────────────────────────┴───┐
-   │  FastAPI                                                   │
-   │  verifies the token, asks OPA, enforces the answer         │
-   └───────────┬──────────────────────────────┬─────────────────┘
-               │ 4. read / write              │ 5. record the decision
-               ▼                              ▼
-          PostgreSQL                     audit_log
-          datasets + metadata            hash-chained, signed, append-only
-```
+![Architecture](docs/img/architecture.png)
 
-Users never talk to OPA, the database or the log. Step 5 happens for denied
-requests too.
+![Request lifecycle](docs/img/sequence.png)
+
+
+Users never talk to OPA, the database or the log. The audit entry is written
+for denied requests too, before the answer is enforced.
 
 ## Security controls
 
@@ -77,6 +65,8 @@ requests too.
 | Keycloak brute-force detection | realm setting | Password guessing (which never reaches the API) |
 | Random storage filenames, `open("xb")` | `app/main.py` | Path traversal, silent overwrites |
 | Forced `application/octet-stream` + `nosniff` | `app/main.py` | Stored XSS from an uploaded HTML file |
+
+![Access matrix](docs/img/matrix.png)
 
 ## Threat model (STRIDE)
 
@@ -108,6 +98,12 @@ implemented rather than aspirational:
 | AU-9 | Protection of audit information | Append-only trigger, hash chain, Ed25519 signatures with the key outside the database, external anchoring |
 | AU-10 | Non-repudiation | Signed entries; the application's key is not in the database an attacker would compromise |
 | AU-12 | Audit record generation | Generated in-process on every request, before the response is returned |
+
+## The two cryptographic pieces
+
+![JWT validation](docs/img/jwt.png)
+
+![Audit hash chain](docs/img/chain.png)
 
 ## Design decisions
 
