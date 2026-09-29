@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app import audit, policy
 from app.auth import CurrentUser, CurrentUserDep
 from app.db import Base, Dataset, engine, get_session
+from app.ratelimit import rate_limit_middleware
 from app.schemas import DatasetOut, Institution, Sensitivity
 
 UPLOAD_DIR = Path("/data/uploads")
@@ -33,7 +34,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Secure Research Data Bank", version="0.6.0", lifespan=lifespan)
+app = FastAPI(title="Secure Research Data Bank", version="0.7.0", lifespan=lifespan)
+
+# Added last, so it runs FIRST: reject a flood before doing any work on it.
+app.middleware("http")(rate_limit_middleware)
 
 
 @app.middleware("http")
