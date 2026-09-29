@@ -116,3 +116,11 @@ test_unknown_action_denied if {
 test_empty_input_denied if {
 	not databank.allow with input as {}
 }
+
+test_admin_can_read_audit if {
+	databank.allow with input as {"user": priya, "action": "read_audit", "dataset": {}}
+}
+
+test_researcher_cannot_read_audit if {
+	not databank.allow with input as {"user": alice, "action": "read_audit", "dataset": {}}
+}

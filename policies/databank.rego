@@ -77,3 +77,11 @@ allow if input.action == "upload"
 # Deliberately absent: a global admin override. An admin from one institution
 # has no access to another institution's data at all. Institutions are tenant
 # boundaries, so a single compromised admin account cannot cross them.
+
+# R7. Reading or verifying the audit log requires the admin role. This is the
+# one system-wide power an admin has: the log spans every institution, and
+# integrity oversight is not the same as access to research data.
+allow if {
+	input.action == "read_audit"
+	"admin" in input.user.roles
+}

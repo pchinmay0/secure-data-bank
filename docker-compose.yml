@@ -23,6 +23,8 @@ services:
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/databank/protocol/openid-connect/certs}
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-databank-api}
       OPA_URL: ${OPA_URL:-http://opa:8181/v1/data/databank/allow}
+      AUDIT_SIGNING_KEY: ${AUDIT_SIGNING_KEY:?set AUDIT_SIGNING_KEY in .env}
+      AUDIT_PUBLIC_KEY: ${AUDIT_PUBLIC_KEY:?set AUDIT_PUBLIC_KEY in .env}
     volumes:
       - uploads:/data/uploads
     ports:
@@ -50,6 +52,7 @@ services:
       - "--server"
       - "--addr=0.0.0.0:8181"
       - "--log-level=error"
+      - "--watch"
       - "/policies"
     volumes:
       - ./policies:/policies:ro

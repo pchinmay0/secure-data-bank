@@ -1,0 +1,2 @@
+# Audit log anchors. Append-only. Commit each new line.
+2026-09-29T08:33:28Z entries=24 tip=60a778c72ba31364489ec4c476dec940faaa0fcd10a093f14a4ffe4f9553e280
